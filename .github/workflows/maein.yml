@@ -1,0 +1,65 @@
+Name: R8S test
+
+on:
+  # ... (Demais configurações de trigger)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Se você usar o AnyKernel3 como um submódulo, a linha acima funciona.
+          # Se for apenas uma pasta, continue.
+
+      # NOVO PASSO: Clonar o AnyKernel3
+      - name: Clone AnyKernel3 for Repacking 
+        run: |
+          # Clona o repositório AnyKernel3 para uma pasta chamada 'AnyKernel3'
+          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+
+      - name: Set up environment
+        run: |
+          # ... (Comandos de instalação de pacotes)
+
+      - name: Build Kernel
+        run: |
+          chmod +x ./build_kernel.sh
+          ./build_kernel.sh
+
+      # NOVO PASSO: Empacotar o Kernel
+      - name: Repack Kernel into Flashable ZIP 📦
+        run: |
+          # 1. Copia o kernel compilado (Image.gz) para o AnyKernel3
+          #    IMPORTANTE: Verifique se o seu build_kernel.sh coloca o Image.gz aqui:
+          #    arch/arm64/boot/Image.gz
+          cp arch/arm64/boot/Image.gz AnyKernel3/
+          
+          # 2. Navega para a pasta AnyKernel3 e compacta tudo no arquivo final.
+          cd AnyKernel3
+          zip -r9 ../R8S-Kernel-Flashable.zip ./*
+          cd ..
+          
+          echo "Flashable ZIP created as R8S-Kernel-Flashable.zip"
+
+      - name: Find built zips # Agora esta etapa encontrará o ZIP criado
+        id: find_zips
+        run: |
+          ZIP_FILES=$(find . -type f -name "*.zip")
+          if [[ -z "$ZIP_FILES" ]]; then
+            echo "No ZIPs found! Exiting."
+            exit 1
+          fi
+          echo "ZIP_FILES<<EOF" >> $GITHUB_ENV
+          echo "$ZIP_FILES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Upload built kernels
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-kernels
+          path: ${{ env.ZIP_FILES }}
+          
