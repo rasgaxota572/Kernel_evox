@@ -1,4 +1,4 @@
-Name: R8S test
+name: R8S test
 
 on:
   # ... (Demais configurações de trigger)
