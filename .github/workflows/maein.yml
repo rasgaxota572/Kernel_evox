@@ -1,7 +1,20 @@
-name: R8S test
+name: R8S
 
 on:
-  # ... (Demais configurações de trigger)
+  push:
+    branches: [ main ]
+    paths:
+      - 'arch/arm64/configs/exynos9830_defconfig'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'arch/arm64/configs/exynos9830_defconfig'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if exynos9830_defconfig is not modified (manual trigger)'
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -12,47 +25,53 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          # Se você usar o AnyKernel3 como um submódulo, a linha acima funciona.
-          # Se for apenas uma pasta, continue.
-
-      # NOVO PASSO: Clonar o AnyKernel3
-      - name: Clone AnyKernel3 for Repacking 
-        run: |
-          # Clona o repositório AnyKernel3 para uma pasta chamada 'AnyKernel3'
-          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
 
       - name: Set up environment
         run: |
-          # ... (Comandos de instalação de pacotes)
+          sudo apt-get update
+          # Consolidated apt install for better efficiency
+          sudo apt install -y build-essential libncurses5-dev zlib1g-dev libssl-dev libffi-dev libreadline-dev libbz2-dev libsqlite3-dev make gcc pigz cpio lld llvm g++-aarch64-linux-gnu libelf-dev clang gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu neofetch libarchive-tools ccache
+          
+          neofetch
 
       - name: Build Kernel
         run: |
           chmod +x ./build_kernel.sh
+          # The script is assumed to place Image.gz in arch/arm64/boot/
           ./build_kernel.sh
 
-      # NOVO PASSO: Empacotar o Kernel
-      - name: Repack Kernel into Flashable ZIP 📦
+      - name: Package Kernel to Flashable Zip 📦
         run: |
-          # 1. Copia o kernel compilado (Image.gz) para o AnyKernel3
-          #    IMPORTANTE: Verifique se o seu build_kernel.sh coloca o Image.gz aqui:
-          #    arch/arm64/boot/Image.gz
+          # 1. Clone a kernel flashing template (e.g., AnyKernel3)
+          git clone --depth 1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          
+          # 2. Copy the newly built kernel image (Image.gz) into the AnyKernel3 directory
+          # Note: Adjust the source path if your build script puts Image.gz elsewhere.
           cp arch/arm64/boot/Image.gz AnyKernel3/
           
-          # 2. Navega para a pasta AnyKernel3 e compacta tudo no arquivo final.
+          # Optional: Copy other components like dtb, modules, etc., if needed
+          # cp path/to/dtb AnyKernel3/
+          
+          # 3. Create the final flashable zip
+          ZIP_NAME="R8S-Kernel-$(date +%Y%m%d%H%M).zip"
           cd AnyKernel3
-          zip -r9 ../R8S-Kernel-Flashable.zip ./*
+          zip -r9 "../$ZIP_NAME" *
           cd ..
           
-          echo "Flashable ZIP created as R8S-Kernel-Flashable.zip"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "Package created: $ZIP_NAME"
 
-      - name: Find built zips # Agora esta etapa encontrará o ZIP criado
+      - name: Find built zips
         id: find_zips
         run: |
+          # Now, it should find the ZIP created in the previous step
           ZIP_FILES=$(find . -type f -name "*.zip")
           if [[ -z "$ZIP_FILES" ]]; then
             echo "No ZIPs found! Exiting."
             exit 1
           fi
+          # The $GITHUB_ENV is already set by the previous step, but we ensure 
+          # ZIP_FILES is set for robustness and handling multiple zips if necessary.
           echo "ZIP_FILES<<EOF" >> $GITHUB_ENV
           echo "$ZIP_FILES" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -61,5 +80,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: built-kernels
-          path: ${{ env.ZIP_FILES }}
-          
+          # The path must be the exact file name(s), which we ensure is set in the Package step
+          path: ${{ env.ZIP_NAME }}
