@@ -8,4 +8,4 @@ export CROSS_COMPILE=aarch64-linux-gnu-
 export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
 make extreme_r8s_defconfig
-make -j4 CC=clang LLVM=1
+make -j$(nproc) CC=clang LLVM=1
